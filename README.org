@@ -1,0 +1,31 @@
+#+TITLE: DAC2BIDS
+
+* Introduction
+A set of utilities to automatize the conversion of DICOM into NIfTI files and to
+organize the output conforming to the [[http://bids.neuroimaging.io/][BIDS]] format. DAC2BIDS tries to be as
+compatible as possible with the Donders Institute DAC (Data Acquisition
+Collection).
+
+The recommended workflow is:
+
+1. Generate a bids folder structure for your project. Example:
+#+BEGIN_SRC bash :eval never
+mkdir -p experiment-datasets/sub-{01,02}/ses-{01-02}/{func,anat,fmap}
+#+END_SRC
+2. Generate yaml files with dac2bids.py. These yaml files are used as input to:
+3. Convert DICOMs to NIfTIs with dcm2niibatch.
+
+DAC2BIDS covers step number 2 of the workflow above. The generated yaml
+configuration files serve a double purpose as they document what DICOM folders
+are being converted to what NIfTI files.
+
+* Dependencies
+  Requires Python 2.7 and the following modules: =yaml= and =dicom=.
+
+* Installation and Usage
+Use =pip= to install the required modules and simply call dac2bids from the command line.
+See dac2bids --help for the calling syntax.
+
+* Limitations
+
+Currently only supports DICOMs from latest Siemens scanners (VD13+).
