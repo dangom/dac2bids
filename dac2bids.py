@@ -4,12 +4,13 @@
 # generates configuration for dcm2niibatch
 # from a nested folder with dicom files.
 
+import optparse
+import os.path
 import random
 import re
-import os.path
-import optparse
-import yaml
+
 import dicom
+import yaml
 
 
 # will need to create a nifti file for each directory in folder.
@@ -105,7 +106,62 @@ def is_multiecho(folder):
     return get_number_of_echoes_from_x_protocol(randfile) > 1
 
 
-# NEEDS refactoring. 
+### Parsing functions ###
+### Assume that all relevant information can be extracted from
+### a dicom and its folder.
+
+def parse_func(dicomfile, dicomfolder=None):
+
+    # Ad-hoc. Would be cool to read from a config file here, or task description.
+    if any(k in dicomfile.ProtocolName for k in ('rest', 'resting', 'Rest')):
+        experiment = 'task-rest'
+    else:
+        experiment = 'task-task'
+
+    if dicomfolder is not None:
+        if is_multiecho(dicomfolder):
+            acq = 'acq-mbme'
+        else:
+            acq = 'acq-mb'
+
+    relevant_info = {
+        'outfolder': 'func',
+        'imgtype': mag_or_phase(dicomfile.ImageType),
+        'experiment': experiment,
+        'echo': dicomfile.EchoNumbers,
+        'acq': acq
+    }
+
+    return relevant_info
+
+def parse_anat(dicomfile, dicomfolder=None):
+    return None
+
+def parse_fmap(dicomfile, dicomfolder=None):
+    return None
+
+def parse_physio(dicomfile, dicomfolder=None):
+    return None
+
+def parse_dwi(dicomfile, dicomfolder=None):
+    return None
+
+
+def dispatch_dicom_parser(dicomfile):
+    """Checks whether a dicom belongs to an anatomical, functional, diffusion, fmap or physiologging
+    series. Function may not be 100% error proof since it is based on a set of heuristics defined
+    from experiments on a single scanner. Dicomfile is an instance of Dicom, as obtained from
+    dicom.read_file()
+
+    SUPPORT FOR DWI NOT ADDED YET.
+    """
+    # Attempt to match functional
+    if dicomfile.ScanningSequence == 'EP':
+        return parse_func
+    # Attempt to match anatomical
+
+
+# NEEDS refactoring.
 def parse_protocols(currfolder):
     """
     Takes a random DICOM image from currfolder and extracts
