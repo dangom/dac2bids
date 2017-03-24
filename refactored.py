@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-24 15:53:04 danielpgomez>
+# Time-stamp: <2017-03-24 16:55:41 danielpgomez>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -15,6 +15,40 @@ into a YAML file.
 import functools
 import os
 import string
+
+
+# SOME HELPER FUNCTIONS
+def lsdirs(folder):
+    """
+    Return an iterable for all directories in a folder.
+    Ignore files.
+    """
+    return filter(lambda x:
+                  os.path.isdir(os.path.join(folder, x)),
+                  os.listdir(folder))
+
+def has_subdirectory(folder):
+    """
+    Return true if a folder has a subdirectory.
+    Ignore hidden directories (such as .git, for example)
+    """
+    # root, subdirs, files
+    for _, subdirs, _ in os.walk(folder):
+        return subdirs and not all(d[0] == '.' for d in subdirs)
+
+def formatter(precision=2):
+    """
+    Formatter returns a formatting function for a given precision.
+    Ex. f =formatter(2) => f(3) = '03'
+    Ex. f =formatter(5) => f(3) = '00003'
+
+    :param precision: number of digits for formatter
+    :returns: a lambda function that formats text.
+    :rtype: function
+
+    """
+    form = "{" + ":0{}d".format(precision) + "}"
+    return lambda x: form.format(x)
 
 
 class UnproperDicomSortingError(Exception):
@@ -134,36 +168,33 @@ class Bidifyer:
     bids_tag_separator = "_"
 
     default_configuration = {"subject_number": 1, # mandatory
-                             "subject_label": None, # optional
-                             "session_number": None, # optional
-                             "session_label": None, # optional
-                             "task_label": None, # mandatory for functional data
-                             "acquisition_label": None, # optional
-                             "pe_direction_label": None, # optional
-                             "run_index": None} # optional
+                             "subject_label": "", # optional
+                             "session_number": "", # optional
+                             "session_label": "", # optional
+                             "task_label": "", # mandatory for functional data
+                             "acquisition_label": "", # optional
+                             "pe_direction_label": "", # optional
+                             "run_index": ""} # optional
 
-    def __init__(self, config=default_configuration):
-        """ FIXME Consider changing input keyword arguments for a dictionary.
+    def __init__(self, bids_config=default_configuration, format_precision=2):
+        """
 
-        :param subject_number: Subject number, required.
-        :param subject_label: A label to come before the number, e.g. "control".
-        :param session_number: Session number
-        :param session_label: Label to come before the session, e.g. "pre"
+        :param bids_config: Dictionary with subject number, subject label, session number,
+        session label, task label, acquisition label, pe_direction label and run index."
         :param format_precision: Zeropadding of subject and session numbers.
-        :param acquisition_label: Acquisition identifyer, e.g. "singleband
-        :param run_index: Run index
         :returns: None
         :rtype: None
 
         """
-        self.config["subject_number"] = config["subject_number"] or 1
-        self.config["session_number"] = config["session_number"]
-        self.config["subject_label"] = config["subject_label"]
-        self.config["session_label"] = config["session_label"]
-        self.config["task_label"] = config["task_label"]
-        self.config["acquisition_label"] = config["acquisition_label"]
-        self.config["pe_direction_label"] = config["pe_direction_label"]
-        self.config["run_index"] = config["run_index"]
+        self.config = dict()
+        self.config["subject_number"] = bids_config.get("subject_number", 1)
+        self.config["session_number"] = bids_config.get("session_number", "")
+        self.config["subject_label"] = bids_config.get("subject_label", "")
+        self.config["session_label"] = bids_config.get("session_label", "")
+        self.config["task_label"] = bids_config.get("task_label", "")
+        self.config["acquisition_label"] = bids_config.get("acquisition_label", "")
+        self.config["pe_direction_label"] = bids_config.get("pe_direction_label", "")
+        self.config["run_index"] = bids_config.get("run_index", "")
 
         self.format_precision = format_precision
 
@@ -173,6 +204,10 @@ class Bidifyer:
         # Specify the order of the tags according to the BIDS specification.
         self.__tags = (self.subject_tag, self.session_tag,
                        self.task_tag, self.acquisition_tag, self.run_tag)
+
+        for label in self.config.values():
+            if label != "":
+                self.check_label(label)
 
 
     @staticmethod
@@ -185,10 +220,10 @@ class Bidifyer:
         :rtype: bool
 
         """
-        if all(tokens in string.ascii_letters for tokens in label):
-            return label
+        if str(label).isalnum():
+            return True
 
-        error_msg = "Following label contains illegal character: %s" % label
+        error_msg = "Following label contains illegal character: %s" % str(label)
         raise BidsMalformedLabelError(error_msg)
 
     @property
@@ -201,7 +236,7 @@ class Bidifyer:
         :rtype: string
 
         """
-        label = self.config["subject_label"] if self.config["subject_label"] is not None else ""
+        label = self.config["subject_label"]
         number = self.formatter(self.config["subject_number"])
         tag = "{0}-{1}{2}".format(self.bids_abbreviations["subject"],
                                   label,
@@ -219,11 +254,11 @@ class Bidifyer:
         :rtype: string
 
         """
-        if self.config["session_label"] is None and self.config["session_number"] is None:
+        if self.config["session_label"] == "" and self.config["session_number"] == "":
             return ""
 
-        label = self.config["session_label"] if self.config["session_label"] is not None else ""
-        if self.config["session_number"] is not None:
+        label = self.config["session_label"]
+        if self.config["session_number"] is not "":
             number = self.formatter(self.config["session_number"])
         else:
             number = ""
@@ -244,7 +279,7 @@ class Bidifyer:
         :returns: Acquisition tag
         :rtype: string
         """
-        if self.config["task_label"] is None:
+        if self.config["task_label"] == "":
             return ""
         else:
             return "{0}-{1}".format(self.bids_abbreviations["task"],
@@ -262,7 +297,7 @@ class Bidifyer:
         :returns: Acquisition tag
         :rtype: string
         """
-        if self.config["acquisition_label"] is None:
+        if self.config["acquisition_label"] == "":
             return ""
         else:
             return "{0}-{1}".format(self.bids_abbreviations["acquisition"],
@@ -278,7 +313,7 @@ class Bidifyer:
         :returns: PE direction tag
         :rtype: string
         """
-        if self.config["pe_direction_label"] is None:
+        if self.config["pe_direction_label"] == "":
             return ""
         else:
             return "{0}-{1}".format(self.bids_abbreviations["pe_direction"],
@@ -295,7 +330,7 @@ class Bidifyer:
         :returns: Run tag
         :rtype: string
         """
-        if self.config["run_index"] is None:
+        if self.config["run_index"] == "":
             return ""
         else:
             run_formatter = formatter(precision=2)
@@ -337,7 +372,7 @@ class FunctionalBidifyer(Bidifyer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
-        if self.config["task_label"] is None:
+        if self.config["task_label"] == "":
             error_msg = "Functional Data require a proper task label."
             raise BidsInconsistentNamingError(error_msg)
 
@@ -345,6 +380,7 @@ class FunctionalBidifyer(Bidifyer):
 class PhysiologicalBidifyer(Bidifyer):
     # Physiological Data also goes to the functional directory.
     bids_canonical_directory = "func"
+    bids_canonical_endings = ("physio")
 
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
@@ -352,46 +388,14 @@ class PhysiologicalBidifyer(Bidifyer):
 
 class DiffusionBidifyer(Bidifyer):
     bids_canonical_directory = "dwi"
+    bids_canonical_endings = ("dwi")
 
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
 
 class FieldMapBidifyer(Bidifyer):
     bids_canonical_directory = "fmap"
+    bids_canonical_endings = ("phasediff", "magnitude1")
 
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
-
-
-# SOME HELPER FUNCTIONS
-def lsdirs(folder):
-    """
-    Return an iterable for all directories in a folder.
-    Ignore files.
-    """
-    return filter(lambda x:
-                  os.path.isdir(os.path.join(folder, x)),
-                  os.listdir(folder))
-
-def has_subdirectory(folder):
-    """
-    Return true if a folder has a subdirectory.
-    Ignore hidden directories (such as .git, for example)
-    """
-    # root, subdirs, files
-    for _, subdirs, _ in os.walk(folder):
-        return subdirs and not all(d[0] == '.' for d in subdirs)
-
-def formatter(precision=2):
-    """
-    Formatter returns a formatting function for a given precision.
-    Ex. f =formatter(2) => f(3) = '03'
-    Ex. f =formatter(5) => f(3) = '00003'
-
-    :param precision: number of digits for formatter
-    :returns: a lambda function that formats text.
-    :rtype: function
-
-    """
-    form = "{" + ":0{}d".format(precision) + "}"
-    return lambda x :form.format(x)
