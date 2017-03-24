@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-24 14:08:38 danielpgomez>
+# Time-stamp: <2017-03-24 15:53:04 danielpgomez>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -12,7 +12,9 @@ Compose a BIDS compliant name from data in a folder.
 Convert the BIDS compliant name and the directory and output
 into a YAML file.
 """
+import functools
 import os
+import string
 
 
 class UnproperDicomSortingError(Exception):
@@ -26,6 +28,13 @@ class BidsInconsistentNamingError(Exception):
     """
     Raised when an obligatory BIDS label is missing.
     """
+    pass
+
+class BidsMalformedLabelError(Exception):
+    """
+    Raised when a Bids label contains symbols.
+    """
+    pass
 
 
 class Dac2Bids:
@@ -68,8 +77,8 @@ class Dac2Bids:
 
         # FIXME Add automatic checks to read subject and session numbers
         # from the input directory, if subject and session numbers are None.
-        self.subject_number = subject_number
-        self.session_number = session_number
+        self.config["subject_number"] = subject_number
+        self.config["session_number"] = session_number
 
 
     def dispatch_parsers(self):
@@ -111,20 +120,30 @@ class DicomParser:
 class Bidifyer:
     """
     Provide functionality to compose a BIDS compliant filename.
-    This class is a clone of the BIDS spec directly.
+    This class clones the BIDS spec directly.
     """
     bids_version = "1.0.1"
 
-    canonical_field = {"subject" : "sub",
-                       "session" : "ses",
-                       "acquisition" : "acq",
-                       "run" : "run"}
+    bids_abbreviations = {"subject" :"sub",
+                          "session" :"ses",
+                          "task" :"task",
+                          "acquisition" :"acq",
+                          "pe_direction": "dir", # Phase encoding, for TOPUP.
+                          "run" :"run"}
 
-    def __init__(self,
-                 subject_number, subject_label=None,
-                 session_number=None, session_label=None, format_precision=2,
-                 task_label=None, acquisition_label=None, run_index=None):
-        """
+    bids_tag_separator = "_"
+
+    default_configuration = {"subject_number": 1, # mandatory
+                             "subject_label": None, # optional
+                             "session_number": None, # optional
+                             "session_label": None, # optional
+                             "task_label": None, # mandatory for functional data
+                             "acquisition_label": None, # optional
+                             "pe_direction_label": None, # optional
+                             "run_index": None} # optional
+
+    def __init__(self, config=default_configuration):
+        """ FIXME Consider changing input keyword arguments for a dictionary.
 
         :param subject_number: Subject number, required.
         :param subject_label: A label to come before the number, e.g. "control".
@@ -137,16 +156,40 @@ class Bidifyer:
         :rtype: None
 
         """
-        self.subject_number = subject_number
-        self.subject_label = subject_label
-        self.session_number = session_number
-        self.session_label = session_label
-        self.task_label = task_label
-        self.acquisition_label = acquisition_label
-        self.run_index = run_index
+        self.config["subject_number"] = config["subject_number"] or 1
+        self.config["session_number"] = config["session_number"]
+        self.config["subject_label"] = config["subject_label"]
+        self.config["session_label"] = config["session_label"]
+        self.config["task_label"] = config["task_label"]
+        self.config["acquisition_label"] = config["acquisition_label"]
+        self.config["pe_direction_label"] = config["pe_direction_label"]
+        self.config["run_index"] = config["run_index"]
+
         self.format_precision = format_precision
+
         # A formatter function to account for sub-N, sub-0N or sub-00N.
         self.formatter = formatter(self.format_precision)
+
+        # Specify the order of the tags according to the BIDS specification.
+        self.__tags = (self.subject_tag, self.session_tag,
+                       self.task_tag, self.acquisition_tag, self.run_tag)
+
+
+    @staticmethod
+    def check_label(label):
+        """
+        Check a label for BIDS consistency. Labels may not contain symbols.
+
+        :param label: target label
+        :returns: label consistency
+        :rtype: bool
+
+        """
+        if all(tokens in string.ascii_letters for tokens in label):
+            return label
+
+        error_msg = "Following label contains illegal character: %s" % label
+        raise BidsMalformedLabelError(error_msg)
 
     @property
     def subject_tag(self):
@@ -155,12 +198,12 @@ class Bidifyer:
         The subject tag is obligatory. It must contain a subject number.
 
         :returns: Subject tag
-        :rtype: String
+        :rtype: string
 
         """
-        label = self.subject_label if self.subject_label is not None else ""
-        number = self.formatter(self.subject_number)
-        tag = "{0}-{1}{2}".format(self.canonical_field["subject"],
+        label = self.config["subject_label"] if self.config["subject_label"] is not None else ""
+        number = self.formatter(self.config["subject_number"])
+        tag = "{0}-{1}{2}".format(self.bids_abbreviations["subject"],
                                   label,
                                   number)
         return tag
@@ -173,22 +216,40 @@ class Bidifyer:
         labels, or both.
 
         :returns: Session tag
-        :rtype: String
+        :rtype: string
 
         """
-        if self.session_label is None and self.session_number is None:
+        if self.config["session_label"] is None and self.config["session_number"] is None:
             return ""
 
-        label = self.session_label if self.session_label is not None else ""
-        if self.session_number is not None:
-            number = self.formatter(self.session_number)
+        label = self.config["session_label"] if self.config["session_label"] is not None else ""
+        if self.config["session_number"] is not None:
+            number = self.formatter(self.config["session_number"])
         else:
             number = ""
 
-        tag = "{0}-{1}{2}".format(self.canonical_field["session"],
+        tag = "{0}-{1}{2}".format(self.bids_abbreviations["session"],
                                   label,
                                   number)
         return tag
+
+    @property
+    def task_tag(self):
+        """
+        Generate acquisition tag according to the BIDS specification.
+        The acquisition tag is optional. It may be used to distinguish a specific
+        type of acquisition, as in "singleband" for a singleband reference scan,
+        for example.
+
+        :returns: Acquisition tag
+        :rtype: string
+        """
+        if self.config["task_label"] is None:
+            return ""
+        else:
+            return "{0}-{1}".format(self.bids_abbreviations["task"],
+                                    self.config["task_label"])
+
 
     @property
     def acquisition_tag(self):
@@ -197,12 +258,31 @@ class Bidifyer:
         The acquisition tag is optional. It may be used to distinguish a specific
         type of acquisition, as in "singleband" for a singleband reference scan,
         for example.
+
+        :returns: Acquisition tag
+        :rtype: string
         """
-        if self.acquisition_label is None:
+        if self.config["acquisition_label"] is None:
             return ""
         else:
-            return "{0}-{1}".format(self.canonical_field["acquisition"],
-                                    self.acquisition_label)
+            return "{0}-{1}".format(self.bids_abbreviations["acquisition"],
+                                    self.config["acquisition_label"])
+    @property
+    def pe_direction_tag(self):
+        """
+        Generate acquisition tag according to the BIDS specification.
+        The acquisition tag is optional. It may be used to distinguish a specific
+        type of acquisition, as in "singleband" for a singleband reference scan,
+        for example.
+
+        :returns: PE direction tag
+        :rtype: string
+        """
+        if self.config["pe_direction_label"] is None:
+            return ""
+        else:
+            return "{0}-{1}".format(self.bids_abbreviations["pe_direction"],
+                                    self.config["pe_direction_label"])
 
     @property
     def run_tag(self):
@@ -211,17 +291,41 @@ class Bidifyer:
         The run index tag is optional. Use it to differentiate between runs of the
         same experiment.
         Run indices are formatted with 2 units of precision.
+
+        :returns: Run tag
+        :rtype: string
         """
-        if self.run_index is None:
+        if self.config["run_index"] is None:
             return ""
         else:
             run_formatter = formatter(precision=2)
-            return "{0}-{1}".format(self.canonical_field["run"],
-                                    run_formatter(self.run_index))
+            return "{0}-{1}".format(self.bids_abbreviations["run"],
+                                    run_formatter(self.config["run_index"]))
+
+    @property
+    def tag(self):
+        """
+        Generates the filename BIDS tag without yet specifying the scan type or file extension.
+
+        :returns: Full tag (without scan type specifications.)
+        :rtype: string
+
+        """
+        sep = self.bids_tag_separator
+        return functools.reduce(
+            lambda x, y: x + y,
+            map(lambda x: x + sep if x is not "" else "", self.__tags))[:-1]
 
 
 class AnatomicalBidifyer(Bidifyer):
     bids_canonical_directory = "anat"
+    bids_canonical_endings = ("T1w", "T2w", "T1rho",
+                              "T1map", "T2map",
+                              "FLAIR", "FLASH",
+                              "PD", "PDmap",
+                              "PDT2", "inplaneT1", "inplaneT2",
+                              "angio", "defacemask",
+                              "SWImag", "SWIphase")
 
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
@@ -229,10 +333,11 @@ class AnatomicalBidifyer(Bidifyer):
 
 class FunctionalBidifyer(Bidifyer):
     bids_canonical_directory = "func"
+    bids_canonical_endings = ("bold", "sbref")
 
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
-        if self.task_label is None:
+        if self.config["task_label"] is None:
             error_msg = "Functional Data require a proper task label."
             raise BidsInconsistentNamingError(error_msg)
 
