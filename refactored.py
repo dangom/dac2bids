@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-24 16:55:41 danielpgomez>
+# Time-stamp: <2017-03-24 17:19:09 danielpgomez>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -172,6 +172,7 @@ class Bidifyer:
                              "session_number": "", # optional
                              "session_label": "", # optional
                              "task_label": "", # mandatory for functional data
+                             "acquisition_number": "", # for Multiecho
                              "acquisition_label": "", # optional
                              "pe_direction_label": "", # optional
                              "run_index": ""} # optional
@@ -193,6 +194,7 @@ class Bidifyer:
         self.config["session_label"] = bids_config.get("session_label", "")
         self.config["task_label"] = bids_config.get("task_label", "")
         self.config["acquisition_label"] = bids_config.get("acquisition_label", "")
+        self.config["acquisition_number"] = bids_config.get("acquisition_number", "")
         self.config["pe_direction_label"] = bids_config.get("pe_direction_label", "")
         self.config["run_index"] = bids_config.get("run_index", "")
 
@@ -203,7 +205,7 @@ class Bidifyer:
 
         # Specify the order of the tags according to the BIDS specification.
         self.__tags = (self.subject_tag, self.session_tag,
-                       self.task_tag, self.acquisition_tag, self.run_tag)
+                       self.task_tag, self.acquisition_tag, self.pe_direction_tag, self.run_tag)
 
         for label in self.config.values():
             if label != "":
@@ -297,11 +299,22 @@ class Bidifyer:
         :returns: Acquisition tag
         :rtype: string
         """
-        if self.config["acquisition_label"] == "":
+
+        if self.config["acquisition_label"] == "" and self.config["acquisition_number"] == "":
             return ""
+
+        label = self.config["acquisition_label"]
+        if self.config["acquisition_number"] is not "":
+            acq_formatter = formatter(precision=2)
+            number = acq_formatter(self.config["acquisition_number"])
         else:
-            return "{0}-{1}".format(self.bids_abbreviations["acquisition"],
-                                    self.config["acquisition_label"])
+            number = ""
+
+        tag = "{0}-{1}{2}".format(self.bids_abbreviations["acquisition"],
+                                  label,
+                                  number)
+        return tag
+
     @property
     def pe_direction_tag(self):
         """
