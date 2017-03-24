@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-24 17:19:09 danielpgomez>
+# Time-stamp: <2017-03-24 17:45:46 danielpgomez>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -95,7 +95,7 @@ class Dac2Bids:
         """
         if not os.path.isdir(input_dir):
             error_msg = "%s doesn't exist or is not a directory" % input_dir
-            raise NotADirectoryError(error_msg)
+            raise IOError(error_msg)
 
         self.input_dir = input_dir
         self.output_dir = output_dir

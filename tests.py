@@ -1,6 +1,14 @@
 import unittest
 
-from refactored import Bidifyer
+from refactored import *
+
+
+class Dac2BidsTests(unittest.TestCase):
+
+    def test_inexistent_input_dir(self):
+        input_dir="blabasfjdhkjshdf"
+        output_dir="ulalala"
+        self.assertRaises(IOError, Dac2Bids(input_dir, output_dir))
 
 
 class BidifyerTests(unittest.TestCase):
@@ -78,3 +86,11 @@ class BidifyerTests(unittest.TestCase):
 
         bids = Bidifyer(bids_config=test_configuration, format_precision=3)
         self.assertEqual(bids.tag, "sub-sublabel001_ses-seslabel003_task-tasklabel_acq-acqlabel05_dir-dirlabel_run-08")
+
+    def malformed_label_error(self):
+        config = {"pe_direction_label": "reverse/"}
+        self.assertRaises(BidsMalformedLabelError, Bidifyer(bids_config=config))
+
+    def missing_mandatory_error(self):
+        config = {"subject_number": None}
+        self.assertRaises(BidsInconsistentNamingError, Bidifyer(bids_config=config))
