@@ -1,16 +1,13 @@
-# Time-stamp: <2017-03-24 12:03:34 danielpgomez>
+# Time-stamp: <2017-03-24 14:08:38 danielpgomez>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
 
 Dac2Bids contains three main units of logic:
-
 1. DicomParser
 Identify what kind of scan is contained within a folder.
-
 2. Bidifyer
 Compose a BIDS compliant name from data in a folder.
-
 3. BidsExporter
 Convert the BIDS compliant name and the directory and output
 into a YAML file.
@@ -53,21 +50,27 @@ class Dac2Bids:
         :rtype: None
 
         """
-
         if not os.path.isdir(input_dir):
             error_msg = "%s doesn't exist or is not a directory" % input_dir
             raise NotADirectoryError(error_msg)
 
         self.input_dir = input_dir
+        self.output_dir = output_dir
 
         self.directory_list = dict.fromkeys(lsdirs(self.input_dir))
-        for d in self.directory_list:
-            if has_subdirectory(d):
-                error_msg = "Directory %s contains subdirectories" % d
+        for dicomdir in self.directory_list:
+            if has_subdirectory(dicomdir):
+                error_msg = "Directory %s contains subdirectories" % dicomdir
                 raise UnproperDicomSortingError(error_msg)
 
         self.ignore_dirs = ignore_dirs
         self.skip_incomplete = skip_incomplete
+
+        # FIXME Add automatic checks to read subject and session numbers
+        # from the input directory, if subject and session numbers are None.
+        self.subject_number = subject_number
+        self.session_number = session_number
+
 
     def dispatch_parsers(self):
         """
@@ -112,11 +115,10 @@ class Bidifyer:
     """
     bids_version = "1.0.1"
 
-    canonical_field = { "subject" : "sub",
-                        "session" : "ses",
-                        "acquisition" : "acq",
-                        "run" : "run",
-    }
+    canonical_field = {"subject" : "sub",
+                       "session" : "ses",
+                       "acquisition" : "acq",
+                       "run" : "run"}
 
     def __init__(self,
                  subject_number, subject_label=None,
@@ -143,36 +145,43 @@ class Bidifyer:
         self.acquisition_label = acquisition_label
         self.run_index = run_index
         self.format_precision = format_precision
-        # A string to account for sub-N, sub-0N or sub-00N.
-        self.formatter = "{" + ":0{}d".format(format_precision) + "}"
+        # A formatter function to account for sub-N, sub-0N or sub-00N.
+        self.formatter = formatter(self.format_precision)
 
-
+    @property
     def subject_tag(self):
         """
         Generate subject tag according to the BIDS specification.
+        The subject tag is obligatory. It must contain a subject number.
 
         :returns: Subject tag
         :rtype: String
 
         """
         label = self.subject_label if self.subject_label is not None else ""
-        number = self.formatter.format(self.subject_number)
+        number = self.formatter(self.subject_number)
         tag = "{0}-{1}{2}".format(self.canonical_field["subject"],
                                   label,
                                   number)
         return tag
 
+    @property
     def session_tag(self):
         """
         Generate session tag according to the BIDS specification.
+        The session tag is optional. It may contain only numbers, only
+        labels, or both.
 
         :returns: Session tag
         :rtype: String
 
         """
+        if self.session_label is None and self.session_number is None:
+            return ""
+
         label = self.session_label if self.session_label is not None else ""
         if self.session_number is not None:
-            number = self.formatter.format(self.session_number)
+            number = self.formatter(self.session_number)
         else:
             number = ""
 
@@ -181,35 +190,79 @@ class Bidifyer:
                                   number)
         return tag
 
+    @property
+    def acquisition_tag(self):
+        """
+        Generate acquisition tag according to the BIDS specification.
+        The acquisition tag is optional. It may be used to distinguish a specific
+        type of acquisition, as in "singleband" for a singleband reference scan,
+        for example.
+        """
+        if self.acquisition_label is None:
+            return ""
+        else:
+            return "{0}-{1}".format(self.canonical_field["acquisition"],
+                                    self.acquisition_label)
+
+    @property
+    def run_tag(self):
+        """
+        Generate run tag according to the BIDS specification.
+        The run index tag is optional. Use it to differentiate between runs of the
+        same experiment.
+        Run indices are formatted with 2 units of precision.
+        """
+        if self.run_index is None:
+            return ""
+        else:
+            run_formatter = formatter(precision=2)
+            return "{0}-{1}".format(self.canonical_field["run"],
+                                    run_formatter(self.run_index))
+
 
 class AnatomicalBidifyer(Bidifyer):
+    bids_canonical_directory = "anat"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(self *args, **kwargs)
+        super().__init__(self, *args, **kwargs)
+
 
 class FunctionalBidifyer(Bidifyer):
+    bids_canonical_directory = "func"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(self *args, **kwargs)
+        super().__init__(self, *args, **kwargs)
         if self.task_label is None:
             error_msg = "Functional Data require a proper task label."
             raise BidsInconsistentNamingError(error_msg)
 
 
 class PhysiologicalBidifyer(Bidifyer):
-    def __init__(self):
-        pass
+    # Physiological Data also goes to the functional directory.
+    bids_canonical_directory = "func"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
 
 
 class DiffusionBidifyer(Bidifyer):
-    def __init__(self):
-        pass
+    bids_canonical_directory = "dwi"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
+
+class FieldMapBidifyer(Bidifyer):
+    bids_canonical_directory = "fmap"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
 
 
 # SOME HELPER FUNCTIONS
 def lsdirs(folder):
     """
-    List all directories in a folder. Ignore files.
+    Return an iterable for all directories in a folder.
+    Ignore files.
     """
     return filter(lambda x:
                   os.path.isdir(os.path.join(folder, x)),
@@ -220,8 +273,20 @@ def has_subdirectory(folder):
     Return true if a folder has a subdirectory.
     Ignore hidden directories (such as .git, for example)
     """
-    for root, subdirs, files in os.walk(folder):
-        if subdirs and not all(d[0]=='.' for d in subdirs):
-            return True
-        else:
-            return False
+    # root, subdirs, files
+    for _, subdirs, _ in os.walk(folder):
+        return subdirs and not all(d[0] == '.' for d in subdirs)
+
+def formatter(precision=2):
+    """
+    Formatter returns a formatting function for a given precision.
+    Ex. f =formatter(2) => f(3) = '03'
+    Ex. f =formatter(5) => f(3) = '00003'
+
+    :param precision: number of digits for formatter
+    :returns: a lambda function that formats text.
+    :rtype: function
+
+    """
+    form = "{" + ":0{}d".format(precision) + "}"
+    return lambda x :form.format(x)
