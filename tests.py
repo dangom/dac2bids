@@ -1,14 +1,17 @@
 import unittest
 
+from nose.tools import raises
+
 from refactored import *
 
 
 class Dac2BidsTests(unittest.TestCase):
 
+    @raises(NotADirectoryError)
     def test_inexistent_input_dir(self):
         input_dir="blabasfjdhkjshdf"
         output_dir="ulalala"
-        self.assertRaises(IOError, Dac2Bids(input_dir, output_dir))
+        Dac2Bids(input_dir, output_dir)
 
 
 class BidifyerTests(unittest.TestCase):
