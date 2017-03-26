@@ -6,7 +6,7 @@ import unittest
 
 from nose.tools import raises
 
-from refactored import (Bidifyer, BidsInconsistentNamingError,
+from bids import (Bidifyer, BidsInconsistentNamingError,
                         BidsMalformedLabelError, Dac2Bids)
 
 
