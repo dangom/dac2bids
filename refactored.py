@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-24 19:33:56 danielpgomez>
+# Time-stamp: <2017-03-26 16:52:31 danielpgomez>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -14,6 +14,7 @@ into a YAML file.
 """
 import functools
 import os
+import re
 import string
 
 
@@ -36,7 +37,7 @@ def has_subdirectory(folder):
     for _, subdirs, _ in os.walk(folder):
         return subdirs and not all(d[0] == '.' for d in subdirs)
 
-def formatter(precision=2):
+def formatter(precision=None):
     """
     Formatter returns a formatting function for a given precision.
     Ex. f =formatter(2) => f(3) = '03'
@@ -47,6 +48,7 @@ def formatter(precision=2):
     :rtype: function
 
     """
+    precision = precision or 2
     form = "{" + ":0{}d".format(precision) + "}"
     return lambda x: form.format(x)
 
@@ -110,8 +112,26 @@ class Dac2Bids:
 
         # FIXME Add automatic checks to read subject and session numbers
         # from the input directory, if subject and session numbers are None.
-        self.config["subject_number"] = subject_number
-        self.config["session_number"] = session_number
+        self.subject_number = subject_number
+        self.session_number = session_number
+
+    def autocheck_subject(self):
+        """
+        Attempt to automatically detect subject number from DACs
+        scheduler naming convention.
+        """
+        submatch = re.search('(?<=sub-x)\d+', self.input_dir)
+        if submatch:
+            return int(submatch.group(0))
+
+    def autocheck_session(self):
+        """
+        Attempt to automatically detect subject number from DACs
+        scheduler naming convention.
+        """
+        sesmatch = re.search('(?<=ses-mri-X)\d+', self.input_dir)
+        if sesmatch:
+            return int(sesmatch.group(0))
 
 
     def dispatch_parsers(self):
@@ -226,6 +246,19 @@ class Bidifyer:
 
         error_msg = "Following label contains illegal character: %s" % str(label)
         raise BidsMalformedLabelError(error_msg)
+
+    def __abstract_tag(self, target_tag, precision=None):
+        """
+        Generate any BIDS Tag.
+        """
+        precision_formatter = formatter(precision)
+
+        tagname = self.bids_abbreviations.get(target_tag, "")
+        label = self.config.get(tagname + "_label", "")
+        number = precision_formatter(self.config.get(tagname + "_index", ""))
+
+        return "{0}-{1}{2}".format(tagname, label, number)
+
 
     @property
     def subject_tag(self):

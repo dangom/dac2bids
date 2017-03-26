@@ -1,8 +1,13 @@
+# Time-stamp: <2017-03-25 19:58:56 danielpgomez>
+"""
+Unit Test for Dac2Bids
+"""
 import unittest
 
 from nose.tools import raises
 
-from refactored import *
+from refactored import (Bidifyer, BidsInconsistentNamingError,
+                        BidsMalformedLabelError, Dac2Bids)
 
 
 class Dac2BidsTests(unittest.TestCase):
@@ -12,6 +17,13 @@ class Dac2BidsTests(unittest.TestCase):
         input_dir="blabasfjdhkjshdf"
         output_dir="ulalala"
         Dac2Bids(input_dir, output_dir)
+
+    def test_autochecks(self):
+        input_dir = "./testdata/sub-x005/ses-mri-X5"
+        output_dir = "./testdata/outputdir"
+        dacbids = Dac2Bids(input_dir, output_dir)
+        self.assertEqual(dacbids.autocheck_session(), 5)
+        self.assertEqual(dacbids.autocheck_subject(), 5)
 
 
 class BidifyerTests(unittest.TestCase):
@@ -90,10 +102,12 @@ class BidifyerTests(unittest.TestCase):
         bids = Bidifyer(bids_config=test_configuration, format_precision=3)
         self.assertEqual(bids.tag, "sub-sublabel001_ses-seslabel003_task-tasklabel_acq-acqlabel05_dir-dirlabel_run-08")
 
+    @raises(BidsMalformedLabelError)
     def malformed_label_error(self):
         config = {"pe_direction_label": "reverse/"}
-        self.assertRaises(BidsMalformedLabelError, Bidifyer(bids_config=config))
+        Bidifyer(bids_config=config)
 
+    @raises(BidsInconsistentNamingError)
     def missing_mandatory_error(self):
         config = {"subject_number": None}
-        self.assertRaises(BidsInconsistentNamingError, Bidifyer(bids_config=config))
+        Bidifyer(bids_config=config)
