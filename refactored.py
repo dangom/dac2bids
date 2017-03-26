@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-26 16:52:31 danielpgomez>
+# Time-stamp: <2017-03-26 18:37:29 danielpgomez>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -50,7 +50,7 @@ def formatter(precision=None):
     """
     precision = precision or 2
     form = "{" + ":0{}d".format(precision) + "}"
-    return lambda x: form.format(x)
+    return lambda x: form.format(int(x)) if x is not "" else ""
 
 class UnproperDicomSortingError(Exception):
     """
@@ -80,7 +80,7 @@ class Dac2Bids:
 
     def __init__(self, input_dir, output_dir,
                  ignore_dirs=None, skip_incomplete=False,
-                 subject_number=None, session_number=None):
+                 subject_index=None, session_index=None):
         """
         Parse configuration and verify inputs.
 
@@ -88,8 +88,8 @@ class Dac2Bids:
         :param output_dir: Target output directory for BIDS NIfTIs.
         :param ignore_dirs: File or list of directories to ignore
         :param skip_incomplete: Skip series with incomplete volumes.
-        :param subject_number: Subject number. If None, guess from input_dir.
-        :param session_number: session number. If None, guess from output_dir.
+        :param subject_index: Subject index. If None, guess from input_dir.
+        :param session_index: session index. If None, guess from output_dir.
         :returns: None
         :rtype: None
 
@@ -110,14 +110,14 @@ class Dac2Bids:
         self.ignore_dirs = ignore_dirs
         self.skip_incomplete = skip_incomplete
 
-        # FIXME Add automatic checks to read subject and session numbers
-        # from the input directory, if subject and session numbers are None.
-        self.subject_number = subject_number
-        self.session_number = session_number
+        # FIXME Add automatic checks to read subject and session indexs
+        # from the input directory, if subject and session indexs are None.
+        self.subject_index = subject_index
+        self.session_index = session_index
 
     def autocheck_subject(self):
         """
-        Attempt to automatically detect subject number from DACs
+        Attempt to automatically detect subject index from DACs
         scheduler naming convention.
         """
         submatch = re.search('(?<=sub-x)\d+', self.input_dir)
@@ -126,7 +126,7 @@ class Dac2Bids:
 
     def autocheck_session(self):
         """
-        Attempt to automatically detect subject number from DACs
+        Attempt to automatically detect subject index from DACs
         scheduler naming convention.
         """
         sesmatch = re.search('(?<=ses-mri-X)\d+', self.input_dir)
@@ -177,6 +177,7 @@ class Bidifyer:
     """
     bids_version = "1.0.1"
 
+    # Bids naming conventions change every other week.
     bids_abbreviations = {"subject" :"sub",
                           "session" :"ses",
                           "task" :"task",
@@ -186,12 +187,12 @@ class Bidifyer:
 
     bids_tag_separator = "_"
 
-    default_configuration = {"subject_number": 1, # mandatory
+    default_configuration = {"subject_index": 1, # mandatory
                              "subject_label": "", # optional
-                             "session_number": "", # optional
+                             "session_index": "", # optional
                              "session_label": "", # optional
                              "task_label": "", # mandatory for functional data
-                             "acquisition_number": "", # for Multiecho
+                             "acquisition_index": "", # for Multiecho
                              "acquisition_label": "", # optional
                              "pe_direction_label": "", # optional
                              "run_index": ""} # optional
@@ -199,28 +200,25 @@ class Bidifyer:
     def __init__(self, bids_config=default_configuration, format_precision=2):
         """
 
-        :param bids_config: Dictionary with subject number, subject label, session number,
+        :param bids_config: Dictionary with subject index, subject label, session index,
         session label, task label, acquisition label, pe_direction label and run index."
-        :param format_precision: Zeropadding of subject and session numbers.
+        :param format_precision: Zeropadding of subject and session indexs.
         :returns: None
         :rtype: None
 
         """
         self.config = dict()
-        self.config["subject_number"] = bids_config.get("subject_number", 1)
-        self.config["session_number"] = bids_config.get("session_number", "")
+        self.config["subject_index"] = bids_config.get("subject_index", 1)
+        self.config["session_index"] = bids_config.get("session_index", "")
         self.config["subject_label"] = bids_config.get("subject_label", "")
         self.config["session_label"] = bids_config.get("session_label", "")
         self.config["task_label"] = bids_config.get("task_label", "")
         self.config["acquisition_label"] = bids_config.get("acquisition_label", "")
-        self.config["acquisition_number"] = bids_config.get("acquisition_number", "")
+        self.config["acquisition_index"] = bids_config.get("acquisition_index", "")
         self.config["pe_direction_label"] = bids_config.get("pe_direction_label", "")
         self.config["run_index"] = bids_config.get("run_index", "")
 
         self.format_precision = format_precision
-
-        # A formatter function to account for sub-N, sub-0N or sub-00N.
-        self.formatter = formatter(self.format_precision)
 
         # Specify the order of the tags according to the BIDS specification.
         self.__tags = (self.subject_tag, self.session_tag,
@@ -251,13 +249,14 @@ class Bidifyer:
         """
         Generate any BIDS Tag.
         """
-        precision_formatter = formatter(precision)
-
         tagname = self.bids_abbreviations.get(target_tag, "")
-        label = self.config.get(tagname + "_label", "")
-        number = precision_formatter(self.config.get(tagname + "_index", ""))
+        label = self.config.get(target_tag + "_label", "")
+        index = self.config.get(target_tag + "_index", "")
 
-        return "{0}-{1}{2}".format(tagname, label, number)
+        if all(x == "" for x in (label, index)):
+            return ""
+
+        return "{0}-{1}{2}".format(tagname, label, formatter(precision)(index))
 
 
     @property
@@ -270,12 +269,7 @@ class Bidifyer:
         :rtype: string
 
         """
-        label = self.config["subject_label"]
-        number = self.formatter(self.config["subject_number"])
-        tag = "{0}-{1}{2}".format(self.bids_abbreviations["subject"],
-                                  label,
-                                  number)
-        return tag
+        return self.__abstract_tag("subject", self.format_precision)
 
     @property
     def session_tag(self):
@@ -288,19 +282,7 @@ class Bidifyer:
         :rtype: string
 
         """
-        if self.config["session_label"] == "" and self.config["session_number"] == "":
-            return ""
-
-        label = self.config["session_label"]
-        if self.config["session_number"] is not "":
-            number = self.formatter(self.config["session_number"])
-        else:
-            number = ""
-
-        tag = "{0}-{1}{2}".format(self.bids_abbreviations["session"],
-                                  label,
-                                  number)
-        return tag
+        return self.__abstract_tag("session", self.format_precision)
 
     @property
     def task_tag(self):
@@ -313,12 +295,7 @@ class Bidifyer:
         :returns: Acquisition tag
         :rtype: string
         """
-        if self.config["task_label"] == "":
-            return ""
-        else:
-            return "{0}-{1}".format(self.bids_abbreviations["task"],
-                                    self.config["task_label"])
-
+        return self.__abstract_tag("task")
 
     @property
     def acquisition_tag(self):
@@ -331,21 +308,7 @@ class Bidifyer:
         :returns: Acquisition tag
         :rtype: string
         """
-
-        if self.config["acquisition_label"] == "" and self.config["acquisition_number"] == "":
-            return ""
-
-        label = self.config["acquisition_label"]
-        if self.config["acquisition_number"] is not "":
-            acq_formatter = formatter(precision=2)
-            number = acq_formatter(self.config["acquisition_number"])
-        else:
-            number = ""
-
-        tag = "{0}-{1}{2}".format(self.bids_abbreviations["acquisition"],
-                                  label,
-                                  number)
-        return tag
+        return self.__abstract_tag("acquisition")
 
     @property
     def pe_direction_tag(self):
@@ -358,11 +321,7 @@ class Bidifyer:
         :returns: PE direction tag
         :rtype: string
         """
-        if self.config["pe_direction_label"] == "":
-            return ""
-        else:
-            return "{0}-{1}".format(self.bids_abbreviations["pe_direction"],
-                                    self.config["pe_direction_label"])
+        return self.__abstract_tag("pe_direction")
 
     @property
     def run_tag(self):
@@ -375,12 +334,8 @@ class Bidifyer:
         :returns: Run tag
         :rtype: string
         """
-        if self.config["run_index"] == "":
-            return ""
-        else:
-            run_formatter = formatter(precision=2)
-            return "{0}-{1}".format(self.bids_abbreviations["run"],
-                                    run_formatter(self.config["run_index"]))
+        return self.__abstract_tag("run")
+
 
     @property
     def tag(self):
