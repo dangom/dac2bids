@@ -1,4 +1,4 @@
-# Time-stamp: <2017-05-04 14:49:57 dangom>
+# Time-stamp: <2017-05-04 18:15:21 dangom>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -161,6 +161,20 @@ class Dac2Bids:
                 dcmfile.seek(0x80, 1)
                 return dcmfile.read(4) == b'DICM'
 
+    @staticmethod
+    def verify_dicom_is_siemens(tentative_dicom):
+        """
+        All Siemens Dicoms contain a dump of the MrProt structure.
+        The dump is marked with a header starting with 'ASCCONV BEGIN'.
+        Though this check is not foolproof, it is very unlikely to fail.
+
+        :param tentative_dicom: path to dicom file
+        :returns: Bool
+        :rtype: Bool
+
+        """
+        return b'ASCCONV BEGIN' in open(tentative_dicom, 'rb').read()
+
 
 class DicomParser:
     """
@@ -186,6 +200,29 @@ class DicomParser:
     @property
     def contrasts(self):
         pass
+
+    @staticmethod
+    def parse_from_x_protocol(pattern, dicomfile):
+        """
+        Siemens writes a protocol structure as text into each DICOM file.
+        This structure is necessary to recreate a  protocol from a DICOM,
+        since the DICOM information alone wouldn't be sufficient.
+        This function extracts values from the dicomfile according
+        to a given pattern.
+        """
+        with open(dicomfile, 'rb') as openfile:
+            regex = '^' + pattern + '\t = \t(.*)\n'
+            rx = re.compile(regex.encode('utf-8'))
+            for line in openfile:
+                match = rx.match(line)
+                if match:
+                    return int(match.group(1).decode('utf-8'))
+
+    def get_number_of_repetitions_from_x_protocol(self, dicomfile):
+        return self.parse_from_x_protocol('lRepetitions', dicomfile)
+
+    def get_number_of_echoes_from_x_protocol(self, dicomfile):
+        return self.parse_from_x_protocol('lContrasts', dicomfile)
 
 
 class Bidifyer:
