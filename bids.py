@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-26 18:37:29 danielpgomez>
+# Time-stamp: <2017-05-04 14:49:57 dangom>
 """
 Dac2Bids generates a YAML configuration file for dcm2niibatch
 from a root folder with subfolders of DICOM files.
@@ -15,11 +15,9 @@ into a YAML file.
 import functools
 import os
 import re
-import string
 
 
-# SOME HELPER FUNCTIONS
-def lsdirs(folder):
+def _lsdirs(folder):
     """
     Return an iterable for all directories in a folder.
     Ignore files.
@@ -28,7 +26,8 @@ def lsdirs(folder):
                   os.path.isdir(os.path.join(folder, x)),
                   os.listdir(folder))
 
-def has_subdirectory(folder):
+
+def _has_subdirs(folder):
     """
     Return true if a folder has a subdirectory.
     Ignore hidden directories (such as .git, for example)
@@ -37,13 +36,14 @@ def has_subdirectory(folder):
     for _, subdirs, _ in os.walk(folder):
         return subdirs and not all(d[0] == '.' for d in subdirs)
 
-def formatter(precision=None):
+
+def _formatter(precision=None):
     """
     Formatter returns a formatting function for a given precision.
-    Ex. f =formatter(2) => f(3) = '03'
-    Ex. f =formatter(5) => f(3) = '00003'
+    Ex. f =_formatter(2) => f(3) = '03'
+    Ex. f =_formatter(5) => f(3) = '00003'
 
-    :param precision: number of digits for formatter
+    :param precision: number of digits for _formatter
     :returns: a lambda function that formats text.
     :rtype: function
 
@@ -52,6 +52,7 @@ def formatter(precision=None):
     form = "{" + ":0{}d".format(precision) + "}"
     return lambda x: form.format(int(x)) if x is not "" else ""
 
+
 class UnproperDicomSortingError(Exception):
     """
     Raised if a given directory contains multiple nested
@@ -59,11 +60,13 @@ class UnproperDicomSortingError(Exception):
     """
     pass
 
+
 class BidsInconsistentNamingError(Exception):
     """
     Raised when an obligatory BIDS label is missing.
     """
     pass
+
 
 class BidsMalformedLabelError(Exception):
     """
@@ -95,15 +98,15 @@ class Dac2Bids:
 
         """
         if not os.path.isdir(input_dir):
-            error_msg = "\"%s\" doesn't exist or is not a directory" % input_dir
+            error_msg = "\"%s\" doesn't exist or isn't a directory" % input_dir
             raise NotADirectoryError(error_msg)
 
         self.input_dir = input_dir
         self.output_dir = output_dir
 
-        self.directory_list = dict.fromkeys(lsdirs(self.input_dir))
+        self.directory_list = dict.fromkeys(_lsdirs(self.input_dir))
         for dicomdir in self.directory_list:
-            if has_subdirectory(dicomdir):
+            if _has_subdirs(dicomdir):
                 error_msg = "Directory %s contains subdirectories" % dicomdir
                 raise UnproperDicomSortingError(error_msg)
 
@@ -133,7 +136,6 @@ class Dac2Bids:
         if sesmatch:
             return int(sesmatch.group(0))
 
-
     def dispatch_parsers(self):
         """
         Iterate over self.directory_list, guess type of acquisition and
@@ -143,7 +145,21 @@ class Dac2Bids:
         :rtype: None
         """
 
+    @staticmethod
+    def verify_file_is_dicom(tentative_dicom):
+        """
+        Checks if a file is a DICOM. Dicoms have
+        the string DICM hardcoded at offset 0x80.
 
+        :param tentative_dicom: path to tentative dicom file
+        :returns: Bool
+        :rtype: Bool
+
+        """
+        if os.path.isfile(tentative_dicom):
+            with open(tentative_dicom, 'rb') as dcmfile:
+                dcmfile.seek(0x80, 1)
+                return dcmfile.read(4) == b'DICM'
 
 
 class DicomParser:
@@ -151,7 +167,8 @@ class DicomParser:
     Contains all logic and heuristics to decide whether a folder contains
     anatomical, diffusion, functional or physiological data (or field maps).
     """
-    def __init__(self, input_file=None):
+    def __init__(self, input_file):
+
         self.input_file = input_file
 
     @property
@@ -170,6 +187,7 @@ class DicomParser:
     def contrasts(self):
         pass
 
+
 class Bidifyer:
     """
     Provide functionality to compose a BIDS compliant filename.
@@ -178,24 +196,24 @@ class Bidifyer:
     bids_version = "1.0.1"
 
     # Bids naming conventions change every other week.
-    bids_abbreviations = {"subject" :"sub",
-                          "session" :"ses",
-                          "task" :"task",
-                          "acquisition" :"acq",
-                          "pe_direction": "dir", # Phase encoding, for TOPUP.
-                          "run" :"run"}
+    bids_abbreviations = {"subject": "sub",
+                          "session": "ses",
+                          "task": "task",
+                          "acquisition": "acq",
+                          "pe_direction":  "dir",  # Phase encoding, for TOPUP.
+                          "run": "run"}
 
     bids_tag_separator = "_"
 
-    default_configuration = {"subject_index": 1, # mandatory
-                             "subject_label": "", # optional
-                             "session_index": "", # optional
-                             "session_label": "", # optional
-                             "task_label": "", # mandatory for functional data
-                             "acquisition_index": "", # for Multiecho
-                             "acquisition_label": "", # optional
-                             "pe_direction_label": "", # optional
-                             "run_index": ""} # optional
+    default_configuration = {"subject_index": 1,  # mandatory
+                             "subject_label": "",  # optional
+                             "session_index": "",  # optional
+                             "session_label": "",  # optional
+                             "task_label": "",  # mandatory for functional data
+                             "acquisition_index": "",  # for Multiecho
+                             "acquisition_label": "",  # optional
+                             "pe_direction_label": "",  # optional
+                             "run_index": ""}  # optional
 
     def __init__(self, bids_config=default_configuration, format_precision=2):
         """
@@ -256,8 +274,7 @@ class Bidifyer:
         if all(x == "" for x in (label, index)):
             return ""
 
-        return "{0}-{1}{2}".format(tagname, label, formatter(precision)(index))
-
+        return "{0}-{1}{2}".format(tagname, label, _formatter(precision)(index))
 
     @property
     def subject_tag(self):
@@ -336,7 +353,6 @@ class Bidifyer:
         """
         return self.__abstract_tag("run")
 
-
     @property
     def tag(self):
         """
@@ -392,6 +408,7 @@ class DiffusionBidifyer(Bidifyer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
+
 
 class FieldMapBidifyer(Bidifyer):
     bids_canonical_directory = "fmap"

@@ -1,4 +1,4 @@
-# Time-stamp: <2017-03-26 17:03:57 danielpgomez>
+# Time-stamp: <2017-05-04 11:58:12 dangom>
 """
 Unit Test for Dac2Bids
 """
@@ -7,15 +7,15 @@ import unittest
 from nose.tools import raises
 
 from bids import (Bidifyer, BidsInconsistentNamingError,
-                        BidsMalformedLabelError, Dac2Bids)
+                  BidsMalformedLabelError, Dac2Bids)
 
 
 class Dac2BidsTests(unittest.TestCase):
 
     @raises(NotADirectoryError)
     def test_inexistent_input_dir(self):
-        input_dir="blabasfjdhkjshdf"
-        output_dir="ulalala"
+        input_dir = "blabasfjdhkjshdf"
+        output_dir = "ulalala"
         Dac2Bids(input_dir, output_dir)
 
     def test_autochecks(self):
@@ -62,21 +62,21 @@ class BidifyerTests(unittest.TestCase):
         self.assertEqual(bids.tag, "sub-control03_ses-pre08")
 
     def test_acquisition_tag(self):
-        # No such thing as acquisition index. (But could maybe be used for ME?!)
+        # No such thing as acq index. (But could maybe be used for ME?!)
         config = {"acquisition_index": 3, "acquisition_label": "sb"}
         bids = Bidifyer(bids_config=config)
         self.assertEqual(bids.acquisition_tag, "acq-sb03")
         self.assertEqual(bids.tag, "sub-01_acq-sb03")
 
     def test_acquisition_tag_label_only(self):
-        # No such thing as acquisition index. (But could maybe be used for ME?!)
+        # No such thing as acq index. (But could maybe be used for ME?!)
         config = {"acquisition_label": "test"}
         bids = Bidifyer(bids_config=config)
         self.assertEqual(bids.acquisition_tag, "acq-test")
         self.assertEqual(bids.tag, "sub-01_acq-test")
 
     def test_acquisition_tag_index_only(self):
-        # No such thing as acquisition index. (But could maybe be used for ME?!)
+        # No such thing as acq index. (But could maybe be used for ME?!)
         config = {"acquisition_index": 3}
         bids = Bidifyer(bids_config=config)
         self.assertEqual(bids.acquisition_tag, "acq-03")
@@ -89,18 +89,19 @@ class BidifyerTests(unittest.TestCase):
         self.assertEqual(bids.tag, "sub-01_dir-reverse")
 
     def test_all_order(self):
-        test_configuration = {"subject_index": 1, # mandatory
-                              "subject_label": "sublabel", # optional
-                              "session_index": 3, # optional
-                              "session_label": "seslabel", # optional
-                              "task_label": "tasklabel", # mandatory for functional data
-                              "acquisition_index": 5, # for Multiecho
-                              "acquisition_label": "acqlabel", # optional
-                              "pe_direction_label": "dirlabel", # optional
-                              "run_index": 8} # optional
+        test_configuration = {"subject_index": 1,  # mandatory
+                              "subject_label": "sublabel",  # optional
+                              "session_index": 3,  # optional
+                              "session_label": "seslabel",  # optional
+                              "task_label": "tasklabel",  # mandatory for fmri
+                              "acquisition_index": 5,  # for Multiecho
+                              "acquisition_label": "acqlabel",  # optional
+                              "pe_direction_label": "dirlabel",  # optional
+                              "run_index": 8}  # optional
 
         bids = Bidifyer(bids_config=test_configuration, format_precision=3)
-        self.assertEqual(bids.tag, "sub-sublabel001_ses-seslabel003_task-tasklabel_acq-acqlabel05_dir-dirlabel_run-08")
+        self.assertEqual(bids.tag,
+                         "sub-sublabel001_ses-seslabel003_task-tasklabel_acq-acqlabel05_dir-dirlabel_run-08")
 
     @raises(BidsMalformedLabelError)
     def malformed_label_error(self):
