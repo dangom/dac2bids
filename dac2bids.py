@@ -97,6 +97,8 @@ def is_incomplete_acquisition(folder):
     """
     randfile = get_random_file(folder)
     nrep = get_number_of_repetitions_from_x_protocol(randfile)
+    if nrep is None:
+        return False
     return nrep > len(os.listdir(folder)) - 1
 
 
@@ -105,7 +107,7 @@ def is_multiecho(folder):
     return get_number_of_echoes_from_x_protocol(randfile) > 1
 
 
-# NEEDS refactoring. 
+# NEEDS refactoring.
 def parse_protocols(currfolder):
     """
     Takes a random DICOM image from currfolder and extracts
@@ -162,7 +164,7 @@ def parse_protocols(currfolder):
             elif 'Task' in desc:
                 experiment = 'task-stroop'
             else:
-                experiment = 'unknown'
+                experiment = 'task-unknown'
             if get_number_of_echoes_from_x_protocol(filepath) > 1:
                 acq = 'acq-mbme'
             else:
@@ -232,7 +234,8 @@ def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False):
         inputdirectory = os.path.join(inputfolder, protocol)
 
         if is_incomplete_acquisition(inputdirectory):
-            continue
+            print("Processing apparently incomplete directory " + inputdirectory)
+            #continue
 
         outputdirectory = os.path.join(outputfolder, sub, ses, config['outfolder'])
 
@@ -242,7 +245,7 @@ def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False):
             #continue # remove this
             filename += '_' + config['experiment'] + '_' + config['acq'] + echonum
             filename += '_bold'
-            filename += '_' + config['imgtype'] + echonum
+            #filename += '_' + config['imgtype'] + echonum
 
         if config['outfolder'] == 'anat':
             #continue #remove this
