@@ -11,7 +11,6 @@ import optparse
 import yaml
 import dicom
 
-
 # will need to create a nifti file for each directory in folder.
 # note the implicit assumption that all folders contain only one series,
 # echo or whatever.
@@ -125,6 +124,7 @@ def parse_protocols(currfolder):
                                 random.choice(os.listdir(
                                     os.path.join(currfolder, protocol))))
         try:
+            print('reading ' + filepath)
             dicomfile = dicom.read_file(filepath)
         except IOError:
             print('File in folder ' + protocol + ' is not a dicom.')
@@ -161,10 +161,9 @@ def parse_protocols(currfolder):
             outfolder = 'func'
             if 'Resting' in desc:
                 experiment = 'task-rest'
-            elif 'Task' in desc:
-                experiment = 'task-stroop'
             else:
-                experiment = 'task-unknown'
+            	# use default task
+                experiment = options.taskname
             if get_number_of_echoes_from_x_protocol(filepath) > 1:
                 acq = 'acq-mbme'
             else:
@@ -178,10 +177,21 @@ def parse_protocols(currfolder):
             elif seqname == '*fl3d11r':
                 outfolder = 'anat'
                 experiment = 'T2starw'
+            elif 'Scout' in seqname:
+                outfolder = 'unknown'
+                experiment = 'unknown'
+            else:
+                outfolder = 'unknown'
+                experiment = 'unknown'
+            
+                
         elif 'IR' in seq:
             outfolder = 'anat'
             experiment = 'T1w'
         elif outfolder not in {'anat', 'func', 'fmap'}:
+            outfolder = 'unknown'
+            experiment = 'unknown'
+        else:
             outfolder = 'unknown'
             experiment = 'unknown'
 
@@ -234,7 +244,7 @@ def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False):
         inputdirectory = os.path.join(inputfolder, protocol)
 
         if is_incomplete_acquisition(inputdirectory):
-            print("Processing apparently incomplete directory " + inputdirectory)
+            print("Warning: dataset does not have the #scans specified in the protocol in directory " + inputdirectory)
             #continue
 
         outputdirectory = os.path.join(outputfolder, sub, ses, config['outfolder'])
@@ -293,8 +303,12 @@ def main():
     p.add_option('--sub', '-s', default=1, type="int", help="The subject number")
     p.add_option('--ses', '-e', default=1, type="int", help="The session number")
     p.add_option('--skipfmap', '-f', action="store_true", help="Skips fieldmaps.")
+    p.add_option('--taskname', '-t', default="task-unknown", help="The task name")    
 
+    global options 	# make options globally available
     options, arguments = p.parse_args()
+    if not 'task-' in options.taskname:
+        options.taskname = 'task-'+options.taskname
 
     yamlcontent = create_yaml(options.inputfolder,
                               options.outputfolder,
