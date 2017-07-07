@@ -107,7 +107,7 @@ def is_multiecho(folder):
 
 
 # NEEDS refactoring.
-def parse_protocols(currfolder):
+def parse_protocols(currfolder,taskname="task-unknown"):
     """
     Takes a random DICOM image from currfolder and extracts
     relevant information for dcm2niix conversion (and for the BIDS format.)
@@ -163,7 +163,7 @@ def parse_protocols(currfolder):
                 experiment = 'task-rest'
             else:
             	# use default task
-                experiment = options.taskname
+                experiment = taskname
             if get_number_of_echoes_from_x_protocol(filepath) > 1:
                 acq = 'acq-mbme'
             else:
@@ -219,13 +219,13 @@ def bids_opts():
     return opts
 
 
-def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False):
+def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False, taskname="task-unknown"):
     """
     Generate a yaml file compatible with dcm2niibatch and the BIDS format.
     Takes an inputfolder tree containing folders with dicom files.
     Folders in inputfolder are assumed to contain a single dataset.
     """
-    inputdict = parse_protocols(inputfolder)
+    inputdict = parse_protocols(inputfolder,taskname=taskname)
 
     # formatted subject number and session number
     sub = 'sub-' + '%02d' % (subnum,)
@@ -305,7 +305,6 @@ def main():
     p.add_option('--skipfmap', '-f', action="store_true", help="Skips fieldmaps.")
     p.add_option('--taskname', '-t', default="task-unknown", help="The task name")    
 
-    global options 	# make options globally available
     options, arguments = p.parse_args()
     if not 'task-' in options.taskname:
         options.taskname = 'task-'+options.taskname
@@ -314,7 +313,8 @@ def main():
                               options.outputfolder,
                               subnum=options.sub,
                               sesnum=options.ses,
-                              skipfmap=options.skipfmap)
+                              skipfmap=options.skipfmap,
+                              taskname=options.taskname)
 
     yamlname = './sub-' + str(options.sub) + '_ses-' + str(options.ses) + '.yaml'
     with open(yamlname, 'w') as yamlfile:
