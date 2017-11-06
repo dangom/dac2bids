@@ -183,8 +183,7 @@ def parse_protocols(currfolder,taskname="task-unknown"):
             else:
                 outfolder = 'unknown'
                 experiment = 'unknown'
-            
-                
+
         elif 'IR' in seq:
             outfolder = 'anat'
             experiment = 'T1w'
@@ -215,6 +214,7 @@ def bids_opts():
             'isFlipY': False,
             'isVerbose': False,
             'isCreateBIDS': True,
+            'isAnonymizeBIDS': True,
             'isOnlySingleFile': False}
     return opts
 
@@ -293,6 +293,12 @@ def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False, t
 #     pathb: !join [*BASE, b]
 #     pathc: !join [*BASE, c]
 # """)
+def try_to_get_subject(directory):
+    return int(re.search('sub-\d(\d\d)', directory)[1])
+
+def try_to_get_session(directory):
+    return int(re.search('ses-(\d\d)', directory)[1])
+
 
 # NEEDS refactoring. Change deprecated OptionParser to ArgParser.
 def main():
@@ -300,14 +306,20 @@ def main():
     p.add_option('--inputfolder', '-i', default='.', help="Input folder of dicoms")
     p.add_option('--outputfolder', '-o', default='./out/', help="Output folder for niftis")
     #p.add_option('--yaml', '-y', default='./batch.yaml', help="Name of generated config file.")
-    p.add_option('--sub', '-s', default=1, type="int", help="The subject number")
-    p.add_option('--ses', '-e', default=1, type="int", help="The session number")
+    p.add_option('--sub', '-s', default=None, type="int", help="The subject number. If None, try to grep")
+    p.add_option('--ses', '-e', default=None, type="int", help="The session number. if None, try to grep")
     p.add_option('--skipfmap', '-f', action="store_true", help="Skips fieldmaps.")
-    p.add_option('--taskname', '-t', default="task-unknown", help="The task name")    
+    p.add_option('--taskname', '-t', default="task-unknown", help="The task name")
 
     options, arguments = p.parse_args()
     if not 'task-' in options.taskname:
         options.taskname = 'task-'+options.taskname
+
+    if options.sub is None:
+        options.sub = try_to_get_subject(options.inputfolder)
+
+    if options.ses is None:
+        options.ses = try_to_get_session(options.inputfolder)
 
     yamlcontent = create_yaml(options.inputfolder,
                               options.outputfolder,
