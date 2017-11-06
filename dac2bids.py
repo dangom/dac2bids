@@ -107,7 +107,7 @@ def is_multiecho(folder):
 
 
 # NEEDS refactoring.
-def parse_protocols(currfolder,taskname="task-unknown"):
+def parse_protocols(currfolder, taskname="task-unknown"):
     """
     Takes a random DICOM image from currfolder and extracts
     relevant information for dcm2niix conversion (and for the BIDS format.)
@@ -115,7 +115,7 @@ def parse_protocols(currfolder,taskname="task-unknown"):
 
     # Initialize empty currfolder.
     dirs = dict.fromkeys(lsdirs(currfolder))
-    dirs = {k:v for k,v in dirs.items() if 'localizer' not in k}
+    dirs = {k: v for k, v in dirs.items() if 'localizer' not in k}
 
     for protocol in dirs.keys():
         # Get a random dicom from the folder.
@@ -162,7 +162,6 @@ def parse_protocols(currfolder,taskname="task-unknown"):
             if 'Resting' in desc:
                 experiment = 'task-rest'
             else:
-            	# use default task
                 experiment = taskname
             if get_number_of_echoes_from_x_protocol(filepath) > 1:
                 acq = 'acq-mbme'
@@ -215,17 +214,19 @@ def bids_opts():
             'isVerbose': False,
             'isCreateBIDS': True,
             'isAnonymizeBIDS': True,
+            'isOnlyBIDS': False,
             'isOnlySingleFile': False}
     return opts
 
 
-def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False, taskname="task-unknown"):
+def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False,
+                taskname="task-unknown"):
     """
     Generate a yaml file compatible with dcm2niibatch and the BIDS format.
     Takes an inputfolder tree containing folders with dicom files.
     Folders in inputfolder are assumed to contain a single dataset.
     """
-    inputdict = parse_protocols(inputfolder,taskname=taskname)
+    inputdict = parse_protocols(inputfolder, taskname=taskname)
 
     # formatted subject number and session number
     sub = 'sub-' + '%02d' % (subnum,)
@@ -236,38 +237,28 @@ def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False, t
 
     for protocol, config in inputdict.items():
 
-        # if config['imgtype'] == 'phase':
-        #     continue
-
         echonum = '%02d' % (config['echo'],)
 
         inputdirectory = os.path.join(inputfolder, protocol)
 
         if is_incomplete_acquisition(inputdirectory):
-            print("Warning: dataset does not have the #scans specified in the protocol in directory " + inputdirectory)
-            #continue
+            print("Warning: #scans specified in protocol not equal to data size in" + inputdirectory)
 
         outputdirectory = os.path.join(outputfolder, sub, ses, config['outfolder'])
 
         filename = sub + '_' + ses
 
         if config['outfolder'] == 'func':
-            #continue # remove this
             filename += '_' + config['experiment'] + '_' + config['acq'] + echonum
             filename += '_bold'
-            #filename += '_' + config['imgtype'] + echonum
 
         if config['outfolder'] == 'anat':
-            #continue #remove this
             filename += '_' + config['experiment']
             if config['experiment'] == 'T2starw':
                 filename += '_' + config['imgtype'] + echonum
 
-        if config['outfolder'] == 'fmap':
-            if skipfmap:
-                dummy = 0 #continue
-            else:
-                filename += '_' + config['imgtype'] + echonum
+        if config['outfolder'] == 'fmap' and not skipfmap:
+            filename += '_' + config['imgtype'] + echonum
 
         if config['outfolder'] is not 'unknown':
             filedict = {'in_dir': os.path.abspath(inputdirectory),
@@ -278,21 +269,6 @@ def create_yaml(inputfolder, outputfolder, subnum=0, sesnum=0, skipfmap=False, t
     return yaml.safe_dump(pydict, default_flow_style=False)
 
 
-# # define custom tag handler
-# def join(loader, node):
-#     seq = loader.construct_sequence(node)
-#     return ''.join([str(i) for i in seq])
-
-# # register the tag handler
-# yaml.add_constructor('!join', join)
-# # using your sample data
-# test = yaml.load("""
-# paths:
-#     root: &BASE /path/to/root/
-#     patha: !join [*BASE, a]
-#     pathb: !join [*BASE, b]
-#     pathc: !join [*BASE, c]
-# """)
 def try_to_get_subject(directory):
     return int(re.search('sub-\d(\d\d)', directory)[1])
 
